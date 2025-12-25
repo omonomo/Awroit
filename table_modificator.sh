@@ -1,0 +1,598 @@
+#!/bin/bash
+
+# Table modificator for proportional font
+#
+# Copyright (c) 2023 omonomo
+#
+# 各種テーブルの修正・追加プログラム
+
+
+# ログをファイル出力させる場合は有効にする (<< "#LOG" をコメントアウトさせる)
+<< "#LOG"
+LOG_OUT=/tmp/table_modificator.log
+LOG_ERR=/tmp/table_modificator_err.log
+exec 1> >(tee -a $LOG_OUT)
+exec 2> >(tee -a $LOG_ERR)
+#LOG
+
+font_familyname="Awroit"
+
+lookupIndex_liga_end="0" # リガチャ用calt+単純置換の最終lookupナンバー
+lookupIndex_liga_calt_end="0" # リガチャ用caltの最終lookupナンバー
+lookupIndex_liga2calt="17" # リガチャ用calt+単純置換の最終からcaltの一つ前までのlookupナンバー加算値
+lookupIndex_calt_normal="18" # caltテーブルのlookupナンバー (リガチャなし)
+num_calt_lookups="20" # caltのルックアップ数 (calt_table_makerでlookupを変更した場合、それに合わせる)
+ccmp1="2" # 先頭のccmpのlookupナンバー (リガチャなし)
+ccmp2=$((ccmp1 + 2))
+ccmp3=$((ccmp2 + 13))
+ccmp1_liga=$((lookupIndex_liga_end + ccmp1)) # 先頭のccmpのlookupナンバー (リガチャあり)
+ccmp2_liga=$((ccmp1_liga + 2))
+ccmp3_liga=$((ccmp2_liga + 13))
+listNo="0"
+caltListName="caltList" # caltテーブルリストの名称
+caltList="${caltListName}_${listNo}" # Lookupごとのcaltテーブルリスト
+cmapList="cmapList" # 異体字セレクタリスト
+extList="extList" # 異体字のglyphナンバーリスト
+gsubList="gsubList" # 作成フォントのGSUBから抽出した置き換え用リスト
+
+zero_width="0" # 文字幅ゼロ
+hankaku_width_normal="512" # 半角文字幅
+hankaku_width_narrow_normal="384" # 半角文字幅の3/4
+hankaku_width_wide_normal="768" # 半角文字幅の3/2
+hankaku_width_Loose="576" # 半角文字幅 (Loose 版)
+hankaku_width_narrow_Loose="432" # 半角文字幅 (Loose 版)の3/4
+hankaku_width_wide_Loose="864" # 半角文字幅 (Loose 版)の3/2
+xAvg_char_width=${hankaku_width_normal} # フォントの半角文字幅は常に1:2とする
+zenkaku_width="1024" # 全角文字幅
+underline="-80" # アンダーライン位置
+#vhea_ascent1024="994"
+#vhea_descent1024="256"
+#vhea_linegap1024="0"
+
+mode="" # 生成モード
+
+leaving_tmp_flag="false" # 一時ファイルを残すか
+reuse_list_flag="false" # 生成済みのリストを使うか
+
+cmap_flag="true" # cmapを編集するか
+gsub_flag="true" # GSUBを編集するか
+other_flag="true" # その他を編集するか
+reuse_list_flag="false" # 生成済みのリストを使うか
+
+calt_insert_flag="true" # caltテーブルを挿入するか
+patch_only_flag="false" # caltテーブルのみ編集
+calt_ok_flag="true" # フォントがcaltに対応しているか
+
+symbol_only_flag="false" # カーニング設定を記号、桁区切りのみにするか
+basic_only_flag="false" # カーニング設定を基本ラテン文字に限定するか
+optimize_flag="false" # なんちゃって最適化ルーチンを実行するか
+liga_flag="false" # リガチャに対応させるか
+
+# エラー処理
+trap "exit 3" HUP INT QUIT
+
+option_format_cm() { # calt_table_maker 用のオプションを整形 (戻り値: 整形したオプション)
+  local opt # 整形前のオプション
+  local leaving_tmp_flag # 一時作成ファイルを残すか
+  local symbol_only_flag # カーニング設定を記号、桁区切りのみにするか
+  local basic_only_flag # カーニング設定を基本ラテン文字に限定するか
+  local optimize_flag="false" # なんちゃって最適化ルーチンを実行するか
+  local liga_flag # リガチャに対応させるか
+  opt="${2}"
+  leaving_tmp_flag="${3}"
+  symbol_only_flag="${4}"
+  basic_only_flag="${5}"
+  optimize_flag="${6}"
+  liga_flag="${7}"
+
+  if [ "${leaving_tmp_flag}" != "false" ]; then # -l オプションがある場合
+    opt="${opt}l"
+  fi
+  if [ "${symbol_only_flag}" != "false" ]; then # -k オプションがある場合
+    opt="${opt}k"
+  fi
+  if [ "${basic_only_flag}" != "false" ]; then # -b オプションがある場合
+    opt="${opt}b"
+  fi
+  if [ "${optimize_flag}" != "false" ]; then # -o オプションがある場合
+    opt="${opt}o"
+  fi
+  if [ "${liga_flag}" != "false" ]; then # -L オプションがある場合
+    opt="${opt}L"
+  fi
+  eval "${1}=\${opt}" # 戻り値を入れる変数名を1番目の引数に指定する
+}
+
+option_check() {
+  if [ -n "${mode}" ]; then # -Cp のうち2個以上含まれていたら終了
+    echo "Illegal option"
+    exit 1
+  fi
+}
+
+remove_temp() {
+  echo "Remove temporary files"
+  rm -f ${font_familyname}*.ttx
+  rm -f ${font_familyname}*.ttx.bak
+  rm -f ${caltListName}*.txt
+  rm -f ${cmapList}.txt
+  rm -f ${extList}.txt
+  rm -f ${gsubList}.txt
+}
+
+table_modificator_help()
+{
+    echo "Usage: table_modificator.sh [options]"
+    echo ""
+    echo "Options:"
+    echo "  -h         Display this information"
+    echo "  -x         Cleaning temporary files" # 一時作成ファイルの消去のみ
+    echo "  -l         Leave (do NOT remove) temporary files"
+    echo "  -N string  Set fontfamily (\"string\")"
+    echo "  -k         Don't make calt settings for latin characters"
+    echo "  -b         Make kerning settings for basic Latin characters only"
+    echo "  -o         Enable optimization process when make kerning settings"
+    echo "  -r         Reuse an existing list"
+    echo "  -m         Disable edit cmap tables"
+    echo "  -g         Disable edit GSUB tables"
+    echo "  -t         Disable edit other tables"
+    echo "  -C         End just before editing calt feature"
+    echo "  -p         Run calt patch only"
+}
+
+# 設定読み込み
+settings="settings" # 設定ファイル名
+settings_txt=$(find . -maxdepth 1 -name "${settings}.txt" | head -n 1)
+if [ -n "${settings_txt}" ]; then
+    S=$(grep -m 1 "^FONT_FAMILYNAME=" "${settings_txt}") # フォントファミリー名
+    if [ -n "${S}" ]; then font_familyname="${S#FONT_FAMILYNAME=}"; fi
+fi
+
+echo
+echo "= Font tables Modificator ="
+echo
+
+# Get options
+while getopts hxlN:kbormgtCp OPT
+do
+    case "${OPT}" in
+        "h" )
+            table_modificator_help
+            exit 0
+            ;;
+        "x" )
+            echo "Option: Cleaning temporary files"
+            remove_temp
+            ./uvs_table_maker.sh -x -N "${font_familyname}"
+            ./calt_table_maker.sh -x
+            exit 0
+            ;;
+        "l" )
+            echo "Option: Leave (do NOT remove) temporary files"
+            leaving_tmp_flag="true"
+            ;;
+        "N" )
+            echo "Option: Set fontfamily: ${OPTARG}"
+            font_familyname=${OPTARG// /}
+            ;;
+        "k" )
+            echo "Option: Don't make calt settings for latin characters"
+            symbol_only_flag="true"
+            ;;
+        "b" )
+            echo "Option: Make calt settings for basic Latin characters only"
+            basic_only_flag="true"
+            ;;
+        "o" )
+            echo "Option: Enable optimization process when make kerning settings"
+            optimize_flag="true"
+            ;;
+        "r" )
+            echo "Option: Reuse an existing list"
+            reuse_list_flag="true"
+            ;;
+        "m" )
+            echo "Option: Disable edit cmap tables"
+            cmap_flag="false"
+            ;;
+        "g" )
+            echo "Option: Disable edit GSUB tables"
+            gsub_flag="false"
+            ;;
+        "t" )
+            echo "Option: Disable edit other tables"
+            other_flag="false"
+            ;;
+        "C" )
+            echo "Option: End just before editing calt feature"
+            option_check
+            mode="-C"
+            patch_only_flag="false"
+            other_flag="true"
+            cmap_flag="true"
+            gsub_flag="true"
+            calt_insert_flag="false"
+            ;;
+        "p" )
+            echo "Option: Run calt patch only"
+            option_check
+            mode="-p"
+            patch_only_flag="true"
+            other_flag="false"
+            cmap_flag="false"
+            gsub_flag="true"
+            calt_insert_flag="true"
+            ;;
+        * )
+            table_modificator_help
+            exit 1
+            ;;
+    esac
+done
+echo
+
+# ttxファイルを削除、パッチのみの場合フォントをリネームして再利用
+rm -f ${font_familyname}*.ttx ${font_familyname}*.ttx.bak
+if [ "${patch_only_flag}" = "true" ]; then
+  find . -maxdepth 1 -name "${font_familyname}*.orig.ttf" | while read P
+  do
+    mv -f "$P" "${P%%.orig.ttf}.ttf"
+  done
+fi
+
+# フォントがあるかチェック
+fontName_ttf=$(find . -maxdepth 1 -name "${font_familyname}*.ttf" | head -n 1)
+if [ -z "${fontName_ttf}" ]; then
+  echo "Error: ${font_familyname} not found" >&2
+  exit 1
+fi
+
+# cmap GSUB 以外のテーブル更新 ----------
+if [ "${other_flag}" = "true" ]; then
+  find . -maxdepth 1 -not -name "*.*.ttf" | \
+  grep -e "${font_familyname}.*\.ttf$" | while read P
+  do
+    ttx -t name -t head -t OS/2 -t post -t hmtx -t hhea "$P" # フォントスタイル判定のため、name テーブルも取得
+#    ttx -t name -t head -t OS/2 -t post -t vhea -t hmtx "$P" # 縦書き情報の取り扱いは中止
+
+    tmp=$(grep -m 1 'mtx name="A"' "${P%%.ttf}.ttx") # A の幅が広ければ Loose 版
+    tmp=${tmp#*width=\"}
+    tmp=${tmp%\" lsb*}
+    if [ $tmp -gt 540 ]; then
+        hankaku_width="${hankaku_width_Loose}"
+        hankaku_width_narrow="${hankaku_width_narrow_Loose}"
+        hankaku_width_wide="${hankaku_width_wide_Loose}"
+    else
+        hankaku_width="${hankaku_width_normal}"
+        hankaku_width_narrow="${hankaku_width_narrow_normal}"
+        hankaku_width_wide="${hankaku_width_wide_normal}"
+    fi
+
+    # head, OS/2 (フォントスタイルを修正、Oblique の場合 Italic のフラグも立てた方がよい)
+    if [ "$(grep -m 1 "Bold Oblique" "${P%%.ttf}.ttx")" ]; then
+      sed -i.bak -e 's,macStyle value="........ ........",macStyle value="00000000 00000011",' "${P%%.ttf}.ttx"
+      sed -i.bak -e 's,fsSelection value="........ ........",fsSelection value="00000011 10100001",' "${P%%.ttf}.ttx"
+    elif [ "$(grep -m 1 "Oblique" "${P%%.ttf}.ttx")" ]; then
+      sed -i.bak -e 's,macStyle value="........ ........",macStyle value="00000000 00000010",' "${P%%.ttf}.ttx"
+      sed -i.bak -e 's,fsSelection value="........ ........",fsSelection value="00000011 10000001",' "${P%%.ttf}.ttx"
+    elif [ "$(grep -m 1 "Bold" "${P%%.ttf}.ttx")" ]; then
+      sed -i.bak -e 's,macStyle value="........ ........",macStyle value="00000000 00000001",' "${P%%.ttf}.ttx"
+      sed -i.bak -e 's,fsSelection value="........ ........",fsSelection value="00000001 10100000",' "${P%%.ttf}.ttx"
+    elif [ "$(grep -m 1 "Regular" "${P%%.ttf}.ttx")" ]; then
+      sed -i.bak -e 's,macStyle value="........ ........",macStyle value="00000000 00000000",' "${P%%.ttf}.ttx"
+      sed -i.bak -e 's,fsSelection value="........ ........",fsSelection value="00000001 11000000",' "${P%%.ttf}.ttx"
+    fi
+
+    # head (フォントの情報を修正)
+    sed -i.bak -e 's,flags value="........ ........",flags value="00000000 00000011",' "${P%%.ttf}.ttx"
+
+    # OS/2 (全体のWidthの修正)
+    sed -i.bak -e "s,xAvgCharWidth value=\".*\",xAvgCharWidth value=\"${xAvg_char_width}\"," "${P%%.ttf}.ttx"
+
+    # post (アンダーラインの位置を指定、等幅フォントでないことを示す)
+    sed -i.bak -e "s,underlinePosition value=\".*\",underlinePosition value=\"${underline}\"," "${P%%.ttf}.ttx"
+    sed -i.bak -e 's,isFixedPitch value=".",isFixedPitch value="0",' "${P%%.ttf}.ttx"
+
+    # vhea
+#    sed -i.bak -e "s,ascent value=\"...\",ascent value=\"${vhea_ascent1024}\"," "${P%%.ttf}.ttx"
+#    sed -i.bak -e "s,descent value=\"-...\",descent value=\"-${vhea_descent1024}\"," "${P%%.ttf}.ttx"
+#    sed -i.bak -e "s,lineGap value=\"...\",lineGap value=\"${vhea_linegap1024}\"," "${P%%.ttf}.ttx"
+
+    # hmtx (Widthのブレを修正)
+    sed -i.bak -e "s,width=\".\",width=\"${zero_width}\"," "${P%%.ttf}.ttx" # zero width
+    sed -i.bak -e "s,width=\"3..\",width=\"${hankaku_width_narrow}\"," "${P%%.ttf}.ttx" # .notdef 半角の3/4
+    sed -i.bak -e "s,width=\"4..\",width=\"${hankaku_width_narrow}\"," "${P%%.ttf}.ttx"
+    sed -i.bak -e "s,width=\"5..\",width=\"${hankaku_width}\"," "${P%%.ttf}.ttx" # 半角
+    sed -i.bak -e "s,width=\"6..\",width=\"${hankaku_width}\"," "${P%%.ttf}.ttx"
+    sed -i.bak -e "s,width=\"7..\",width=\"${hankaku_width_wide}\"," "${P%%.ttf}.ttx" # 半角の3/2
+    sed -i.bak -e "s,width=\"8..\",width=\"${hankaku_width_wide}\"," "${P%%.ttf}.ttx"
+    sed -i.bak -e "s,width=\"9..\",width=\"${hankaku_width_wide}\"," "${P%%.ttf}.ttx"
+    sed -i.bak -e "s,width=\"1...\",width=\"${zenkaku_width}\"," "${P%%.ttf}.ttx" # 全角
+
+    # hhea (最大Widthの修正)
+    sed -i.bak -e "s,advanceWidthMax value=\".*\",advanceWidthMax value=\"${zenkaku_width}\"," "${P%%.ttf}.ttx"
+
+    # テーブル更新
+    mv "$P" "${P%%.ttf}.orig.ttf"
+    ttx -m "${P%%.ttf}.orig.ttf" "${P%%.ttf}.ttx"
+    echo
+  done
+  rm -f ${font_familyname}*.orig.ttf
+  rm -f ${font_familyname}*.ttx.bak
+
+  find . -maxdepth 1 -not -name "*.*.ttx" | \
+  grep -e "${font_familyname}.*\.ttx$" | while read P
+  do
+    mv "$P" "${P%%.ttx}.others.ttx"
+  done
+fi
+
+# cmap テーブルの更新 ----------
+if [ "${cmap_flag}" = "true" ]; then
+  if [ "${reuse_list_flag}" = "false" ]; then
+    rm -f ${cmapList}.txt
+  fi
+  cmaplist_txt=$(find . -maxdepth 1 -name "${cmapList}.txt" | head -n 1)
+  if [ -z "${cmaplist_txt}" ]; then # cmapListが無ければ作成
+    if [ "${leaving_tmp_flag}" = "true" ]; then
+      ./uvs_table_maker.sh -l -N "${font_familyname}"
+    else
+      ./uvs_table_maker.sh -N "${font_familyname}"
+    fi
+  fi
+
+  find . -maxdepth 1 -not -name "*.*.ttf" | \
+  grep -e "${font_familyname}.*\.ttf$" | while read P
+  do
+    ttx -t cmap "$P"
+
+    # cmap (format14を置き換える)
+    sed -i.bak -e '/map uv=/d' "${P%%.ttf}.ttx" # cmap_format_14の中を削除
+    sed -i.bak -e "/<cmap_format_14/r ${cmapList}.txt" "${P%%.ttf}.ttx" # cmap_format_14を置き換え
+
+    # テーブル更新
+    mv "$P" "${P%%.ttf}.orig.ttf"
+    ttx -m "${P%%.ttf}.orig.ttf" "${P%%.ttf}.ttx"
+    echo
+  done
+  rm -f ${font_familyname}*.orig.ttf
+  rm -f ${font_familyname}*.ttx.bak
+
+  find . -maxdepth 1 -not -name "*.*.ttx" | \
+  grep -e "${font_familyname}.*\.ttx$" | while read P
+  do
+    mv "$P" "${P%%.ttx}.cmap.ttx"
+  done
+fi
+
+# GSUB テーブルの更新 ----------
+if [ "${gsub_flag}" = "true" ]; then # caltListを作り直す場合は今あるリストを削除
+  if [ "${reuse_list_flag}" = "false" ]; then
+    rm -f ${caltListName}*.txt
+  fi
+
+  find . -maxdepth 1 -not -name "*.*.ttf" | \
+  grep -e "${font_familyname}.*\.ttf$" | while read P
+  do
+    calt_ok_flag="true" # calt非対応の場合は後でfalse
+    ttx -t GSUB -t OS/2 "$P"
+
+    if [ -n "$(grep -m 1 -A 1 'FeatureRecord index="1"' "${P%%.ttf}.ttx" | grep 'calt')" ]; then # FeatureRecord index 1 が calt だと リガチャ対応
+      liga_flag="true"
+      lookupIndex_calt=$((lookupIndex_calt_normal + lookupIndex_liga_end)) # caltテーブルのlookupナンバー
+    else
+      liga_flag="false"
+      lookupIndex_calt=${lookupIndex_calt_normal} # caltテーブルのlookupナンバー
+    fi
+
+    # GSUB (用字、言語全て共通に変更)
+    if [ $(grep 'FeatureTag value="calt"' "${P%%.ttf}.ttx" | wc -l) -gt 1 ]; then # caltフィーチャが2つ以上(リガチャ以外のcaltが)ある場合
+      echo "Already calt feature exist. Do not overwrite the table."
+    elif [ -n "$(grep -m 1 'FeatureTag value="zero"' "${P%%.ttf}.ttx")" ]; then # zeroフィーチャ(caltのダミー)があるか判定
+      echo "Compatible with calt feature." # フォントがcaltフィーチャに対応していた場合
+      # caltテーブル加工用ファイルの作成
+      if [ "${calt_insert_flag}" = "true" ]; then
+        # gsubListが無ければ作成(calt_table_maker で使用するため)
+        gsublist_txt=$(find . -maxdepth 1 -name "${gsubList}.txt" | head -n 1)
+        if [ -z "${gsublist_txt}" ]; then
+          if [ "${leaving_tmp_flag}" = "true" ]; then
+            ./uvs_table_maker.sh -l -N "${font_familyname}"
+          else
+            ./uvs_table_maker.sh -N "${font_familyname}"
+          fi
+        fi
+        # caltListが無ければ作成
+        caltlist_txt=$(find . -maxdepth 1 -name "${caltListName}*.txt" | head -n 1)
+        if [ -z "${caltlist_txt}" ]; then
+          option_format_cm opt_fg "" "${leaving_tmp_flag}" "${symbol_only_flag}" "${basic_only_flag}" "${optimize_flag}" "${liga_flag}"
+          ./calt_table_maker.sh -"${opt_fg}"
+        fi
+        # リガチャ対応の場合、calt を1つのフィーチャーレコードに集める
+        if [ "${liga_flag}" = "true" ]; then
+          org=$(grep -m 1 "LookupListIndex index=.* value=\"${lookupIndex_liga_calt_end}" "${P%%.ttf}.ttx")
+          tmp=${org#*index=\"}
+          tmp=${tmp%\" value*}
+          add=""
+          for i in $(seq 1 ${num_calt_lookups})
+          do
+            add="${add}<LookupListIndex index=\"$((tmp + i))\" value=\"$((lookupIndex_liga_end + lookupIndex_liga2calt + i))\"/>"
+          done
+          sed -i.bak -e "s,${org},${org}${add}," "${P%%.ttf}.ttx"
+        fi
+        # フィーチャリストを変更
+        sed -i.bak -e "s,usMaxContext value=\".*\",usMaxContext value=\"13\"," "${P%%.ttf}.ttx" # OS/2の先読み文字数を変更
+        sed -i.bak -e 's,FeatureTag value="zero",FeatureTag value="calt",' "${P%%.ttf}.ttx" # caltダミー(zero)を変更
+        find . -maxdepth 1 -name "${caltListName}*.txt" | while read line # caltList(caltルックアップ)の数だけループ
+        do
+          sed -i.bak -e "/Lookup index=\"${lookupIndex_calt}\"/{n;d;}" "${P%%.ttf}.ttx" # Lookup index="${lookupIndex_calt}"〜の中を削除
+          sed -i.bak -e "/Lookup index=\"${lookupIndex_calt}\"/{n;d;}" "${P%%.ttf}.ttx"
+          sed -i.bak -e "/Lookup index=\"${lookupIndex_calt}\"/{n;d;}" "${P%%.ttf}.ttx"
+          sed -i.bak -e "/Lookup index=\"${lookupIndex_calt}\"/{n;d;}" "${P%%.ttf}.ttx"
+          sed -i.bak -e "/Lookup index=\"${lookupIndex_calt}\"/{n;d;}" "${P%%.ttf}.ttx"
+          sed -i.bak -e "/Lookup index=\"${lookupIndex_calt}\"/{n;d;}" "${P%%.ttf}.ttx"
+          sed -i.bak -e "/Lookup index=\"${lookupIndex_calt}\"/r ${caltList}.txt" "${P%%.ttf}.ttx" # Lookup index="${lookupIndex_calt}"〜の後に挿入
+          lookupIndex_calt=$((lookupIndex_calt + 1))
+          listNo=$((listNo + 1))
+          caltList="${caltListName}_${listNo}"
+        done
+      fi
+    else
+      echo "Not compatible with calt feature." # フォントが対応していないか、すでにcaltがある場合
+      calt_ok_flag="false"
+    fi
+
+    # calt対応に関係なくスクリプトリストを変更 (全ての用字の内容を同じにする)
+    sed -i.bak -e '/FeatureIndex index=".." value=".*"/d' "${P%%.ttf}.ttx" # 2桁のindexを削除
+
+    sed -i.bak -e 's,FeatureIndex index="0" value=".*",FeatureIndex index="0" value="0",' "${P%%.ttf}.ttx" # 始めの部分は上書き
+    sed -i.bak -e 's,FeatureIndex index="1" value=".*",FeatureIndex index="1" value="1",' "${P%%.ttf}.ttx" # ←リガチャあり: calt、なし: ccmp
+
+    sed -i.bak -e 's,FeatureIndex index="3" value=".*",FeatureIndex index="3" value="7",' "${P%%.ttf}.ttx"
+    sed -i.bak -e 's,FeatureIndex index="4" value=".*",FeatureIndex index="4" value="8",' "${P%%.ttf}.ttx"
+    sed -i.bak -e 's,FeatureIndex index="5" value=".*",FeatureIndex index="5" value="9",' "${P%%.ttf}.ttx"
+    sed -i.bak -e 's,FeatureIndex index="6" value=".*",FeatureIndex index="6" value="10",' "${P%%.ttf}.ttx"
+    sed -i.bak -e 's,FeatureIndex index="7" value=".*",FeatureIndex index="7" value="11",' "${P%%.ttf}.ttx"
+    sed -i.bak -e 's,FeatureIndex index="8" value=".*",FeatureIndex index="8" value="12",' "${P%%.ttf}.ttx"
+
+    if [ "${liga_flag}" = "true" ]; then # リガチャ対応の場合
+      sed -i.bak -e 's,FeatureIndex index="2" value=".*",FeatureIndex index="2" value="2",' "${P%%.ttf}.ttx" # ccmp
+      if [ -n "$(grep -m 1 'FeatureTag value="ss01"' "${P%%.ttf}.ttx")" ]; then # ssフィーチャがあるか判定、ss対応の場合
+        sed -i.bak -e 's,<FeatureIndex index="9" value=".*"/>,<FeatureIndex index="9" value="13"/>\
+        <FeatureIndex index="10" value="14"/>\
+        <FeatureIndex index="11" value="15"/>\
+        <FeatureIndex index="12" value="16"/>\
+        <FeatureIndex index="13" value="17"/>\
+        <FeatureIndex index="14" value="18"/>\
+        <FeatureIndex index="15" value="19"/>\
+        <FeatureIndex index="16" value="20"/>\
+        <FeatureIndex index="17" value="21"/>\
+        <FeatureIndex index="18" value="22"/>\
+        <FeatureIndex index="19" value="23"/>\
+        <FeatureIndex index="20" value="24"/>\
+        <FeatureIndex index="21" value="25"/>\
+        <FeatureIndex index="22" value="26"/>\
+        <FeatureIndex index="23" value="27"/>\
+        <FeatureIndex index="24" value="28"/>\
+        <FeatureIndex index="25" value="29"/>\
+        <FeatureIndex index="26" value="30"/>\
+        ,' "${P%%.ttf}.ttx" # index9を上書き、以降 index(13 + ss フィーチャの数)、value(index + 4) を追加、caltは後でリガチャ用caltと統合
+      else # ss非対応の場合
+        sed -i.bak -e 's,<FeatureIndex index="9" value=".*"/>,<FeatureIndex index="9" value="13"/>\
+        <FeatureIndex index="10" value="14"/>\
+        <FeatureIndex index="11" value="15"/>\
+        <FeatureIndex index="12" value="16"/>\
+        <FeatureIndex index="13" value="17"/>\
+        ,' "${P%%.ttf}.ttx" # index9を上書き、以降 index13 まで追加、caltは後でリガチャ用caltと統合
+      fi
+    else # リガチャ非対応の場合
+      sed -i.bak -e 's,FeatureIndex index="2" value=".*",FeatureIndex index="2" value="6",' "${P%%.ttf}.ttx" # expt
+      if [ -n "$(grep -m 1 'FeatureTag value="ss01"' "${P%%.ttf}.ttx")" ]; then # ssフィーチャがあるか判定、ss対応の場合
+        sed -i.bak -e 's,<FeatureIndex index="9" value=".*"/>,<FeatureIndex index="9" value="13"/>\
+        <FeatureIndex index="10" value="14"/>\
+        <FeatureIndex index="11" value="15"/>\
+        <FeatureIndex index="12" value="16"/>\
+        <FeatureIndex index="13" value="17"/>\
+        <FeatureIndex index="14" value="18"/>\
+        <FeatureIndex index="15" value="19"/>\
+        <FeatureIndex index="16" value="20"/>\
+        <FeatureIndex index="17" value="21"/>\
+        <FeatureIndex index="18" value="22"/>\
+        <FeatureIndex index="19" value="23"/>\
+        <FeatureIndex index="20" value="24"/>\
+        <FeatureIndex index="21" value="25"/>\
+        <FeatureIndex index="22" value="26"/>\
+        <FeatureIndex index="23" value="27"/>\
+        <FeatureIndex index="24" value="28"/>\
+        <FeatureIndex index="25" value="29"/>\
+        ,' "${P%%.ttf}.ttx" # index9を上書き、以降 index(12 + ss フィーチャの数)、value(index + 4) を追加
+        if [ "${calt_ok_flag}" = "true" ]; then # calt対応であればさらに1つ index 追加
+          sed -i.bak -e 's,<FeatureIndex index="25" value=".*"/>,<FeatureIndex index="25" value="29"/>\
+          <FeatureIndex index="26" value="30"/>\
+          ,' "${P%%.ttf}.ttx"
+        fi
+      else # ss非対応の場合
+        sed -i.bak -e 's,<FeatureIndex index="9" value=".*"/>,<FeatureIndex index="9" value="13"/>\
+        <FeatureIndex index="10" value="14"/>\
+        <FeatureIndex index="11" value="15"/>\
+        <FeatureIndex index="12" value="16"/>\
+        ,' "${P%%.ttf}.ttx" # index9を上書き、以降 index12 まで追加
+        if [ "${calt_ok_flag}" = "true" ]; then # calt対応であれば index13 を追加
+          sed -i.bak -e 's,<FeatureIndex index="12" value=".*"/>,<FeatureIndex index="12" value="16"/>\
+          <FeatureIndex index="13" value="17"/>\
+          ,' "${P%%.ttf}.ttx"
+        fi
+      fi
+    fi
+
+    # 言語 (JAN 他) を削除
+    sed -i.bak -e '/<LangSys>/{n;d;}' "${P%%.ttf}.ttx" # LangSysタグとその間を削除
+    sed -i.bak -e '/<LangSys>/{n;d;}' "${P%%.ttf}.ttx"
+    sed -i.bak -e '/<LangSys>/{n;d;}' "${P%%.ttf}.ttx"
+    sed -i.bak -e '/<LangSys>/{n;d;}' "${P%%.ttf}.ttx"
+    sed -i.bak -e '/<LangSys>/d' "${P%%.ttf}.ttx"
+    sed -i.bak -e '/<\/LangSys>/d' "${P%%.ttf}.ttx"
+    sed -i.bak -e '/LangSysRecord/d' "${P%%.ttf}.ttx" # LangSysRecordタグを削除
+    sed -i.bak -e '/LangSysTag/d' "${P%%.ttf}.ttx" # LangSysTagタグを削除
+
+    # macOS と Ubuntu では 合成後の ccmp に関するインデックス番号と内容が異なるため、対応策として内容を全て同じにする
+    if [ "${liga_flag}" = "true" ]; then # リガチャ対応の場合
+      sed -i.bak -e "\,<LookupListIndex index=\"1\" value=\"${ccmp2_liga}\"/>,d" "${P%%.ttf}.ttx" # Index 1、2 を削除後、Index 0 を置換
+      sed -i.bak -e "\,<LookupListIndex index=\"1\" value=\"${ccmp3_liga}\"/>,d" "${P%%.ttf}.ttx"
+      sed -i.bak -e "\,<LookupListIndex index=\"2\" value=\"${ccmp3_liga}\"/>,d" "${P%%.ttf}.ttx"
+      sed -i.bak -e "s,<LookupListIndex index=\"0\" value=\"${ccmp1_liga}\"/>,<LookupListIndex index=\"0\" value=\"${ccmp1_liga}\"/>\
+      <LookupListIndex index=\"1\" value=\"${ccmp2_liga}\"/>\
+      <LookupListIndex index=\"2\" value=\"${ccmp3_liga}\"/>\
+      ,g" "${P%%.ttf}.ttx"
+      sed -i.bak -e "s,<LookupListIndex index=\"0\" value=\"${ccmp2_liga}\"/>,<LookupListIndex index=\"0\" value=\"${ccmp1_liga}\"/>\
+      <LookupListIndex index=\"1\" value=\"${ccmp2_liga}\"/>\
+      <LookupListIndex index=\"2\" value=\"${ccmp3_liga}\"/>\
+      ,g" "${P%%.ttf}.ttx"
+      sed -i.bak -e "s,<LookupListIndex index=\"0\" value=\"${ccmp3_liga}\"/>,<LookupListIndex index=\"0\" value=\"${ccmp1_liga}\"/>\
+      <LookupListIndex index=\"1\" value=\"${ccmp2_liga}\"/>\
+      <LookupListIndex index=\"2\" value=\"${ccmp3_liga}\"/>\
+      ,g" "${P%%.ttf}.ttx"
+    else # リガチャ非対応の場合
+      sed -i.bak -e "\,<LookupListIndex index=\"1\" value=\"${ccmp2}\"/>,d" "${P%%.ttf}.ttx" # Index 1、2 を削除後、Index 0 を置換
+      sed -i.bak -e "\,<LookupListIndex index=\"1\" value=\"${ccmp3}\"/>,d" "${P%%.ttf}.ttx"
+      sed -i.bak -e "\,<LookupListIndex index=\"2\" value=\"${ccmp3}\"/>,d" "${P%%.ttf}.ttx"
+      sed -i.bak -e "s,<LookupListIndex index=\"0\" value=\"${ccmp1}\"/>,<LookupListIndex index=\"0\" value=\"${ccmp1}\"/>\
+      <LookupListIndex index=\"1\" value=\"${ccmp2}\"/>\
+      <LookupListIndex index=\"2\" value=\"${ccmp3}\"/>\
+      ,g" "${P%%.ttf}.ttx"
+      sed -i.bak -e "s,<LookupListIndex index=\"0\" value=\"${ccmp2}\"/>,<LookupListIndex index=\"0\" value=\"${ccmp1}\"/>\
+      <LookupListIndex index=\"1\" value=\"${ccmp2}\"/>\
+      <LookupListIndex index=\"2\" value=\"${ccmp3}\"/>\
+      ,g" "${P%%.ttf}.ttx"
+      sed -i.bak -e "s,<LookupListIndex index=\"0\" value=\"${ccmp3}\"/>,<LookupListIndex index=\"0\" value=\"${ccmp1}\"/>\
+      <LookupListIndex index=\"1\" value=\"${ccmp2}\"/>\
+      <LookupListIndex index=\"2\" value=\"${ccmp3}\"/>\
+      ,g" "${P%%.ttf}.ttx"
+    fi
+
+    # テーブル更新
+    mv "$P" "${P%%.ttf}.orig.ttf"
+    ttx -m "${P%%.ttf}.orig.ttf" "${P%%.ttf}.ttx"
+    echo
+  done
+  if [ "${patch_only_flag}" = "false" ] && [ "${calt_insert_flag}" = "true" ]; then # パッチのみの場合、再利用できるように元のファイルを残す
+    rm -f ${font_familyname}*.orig.ttf
+  fi
+  rm -f ${font_familyname}*.ttx.bak
+
+  find . -maxdepth 1 -not -name "*.*.ttx" | \
+  grep -e "${font_familyname}.*\.ttx$" | while read P
+  do
+    mv "$P" "${P%%.ttx}.GSUB.ttx"
+  done
+fi
+
+# 一時ファイルを削除
+if [ "${leaving_tmp_flag}" = "false" ]; then
+  remove_temp
+  echo
+fi
+
+# Exit
+echo "Finished modifying the font tables."
+echo
+exit 0
