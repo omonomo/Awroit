@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GSUB calt table maker
+# GSUB calt table maker for Awroit
 #
 # Copyright (c) 2023 omonomo
 #
@@ -18,6 +18,7 @@ exec 1> >(tee -a $LOG_OUT)
 exec 2> >(tee -a $LOG_ERR)
 #LOG
 
+skip=0 # 重複などでスキップした設定の数
 glyphNo="15000" # calt用異体字の先頭glyphナンバー (仮)
 listNo="-1"
 optimizeListNo="4" # -o -O オプションが設定してある場合、指定の listNo 以下は最適化ルーチンを実行する
@@ -115,7 +116,7 @@ chain_context() {
   local lookAheadX laX # 3文字後以降
   local aheadMax # lookAheadのIndex2以降はその数(最大のIndexNo)を入れる(当然内容は全て同じになる)
   local overlap # 全ての設定が重複しているか
-  local S T line0 line1
+  local S T line0 line1 tmp
   optim="${1}"
   substIndex="${3}"
   backtrack=(${4})
@@ -209,6 +210,68 @@ chain_context() {
   lookAhead1=($(printf '%s\n' "${lookAhead1[@]}" | sort -u))
   lookAheadX=($(printf '%s\n' "${lookAheadX[@]}" | sort -u))
 
+<< "#EXCLUSIONS" # 動かしたくない文字を削除 (設定が無いため無効) ====================
+
+  if [ "${lookupIndex}" = "${lookupIndexL}" ]; then
+    exclusionsB=()
+    exclusionsI=()
+    exclusionsA=()
+  elif [ "${lookupIndex}" = "${lookupIndexR}" ]; then
+    exclusionsB=()
+    exclusionsI=()
+    exclusionsA=()
+  else
+    exclusionsB=()
+    exclusionsI=()
+    exclusionsA=()
+  fi
+
+  unset tmp
+  for S in ${backtrack[@]}; do
+    found="false"
+    for T in ${exclusionsB[@]}; do
+      if [ "${S}" = "${T}" ]; then
+        found="true"
+        break
+      fi
+    done
+    if [ "${found}" = "false" ]; then
+      tmp+=("${S}")
+    fi
+  done
+  backtrack=("${tmp[@]}")
+
+  unset tmp
+  for S in ${input[@]}; do
+    found="false"
+    for T in ${exclusionsI[@]}; do
+      if [ "${S}" = "${T}" ]; then
+        found="true"
+        break
+      fi
+    done
+    if [ "${found}" = "false" ]; then
+      tmp+=("${S}")
+    fi
+  done
+  input=("${tmp[@]}")
+
+  unset tmp
+  for S in ${lookAhead[@]}; do
+    found="false"
+    for T in ${exclusionsA[@]}; do
+      if [ "${S}" = "${T}" ]; then
+        found="true"
+        break
+      fi
+    done
+    if [ "${found}" = "false" ]; then
+      tmp+=("${S}")
+    fi
+  done
+  lookAhead=("${tmp[@]}")
+
+#EXCLUSIONS
 # 重複している設定を削除 ====================
 
   if [ ${listNo} -le ${optimizeListNo} ]; then # 指定の listNo 以下で
@@ -303,7 +366,11 @@ chain_context() {
         optimCheck=$((optimCheck + 1)) # 最適化が有効なので + 1
       fi
       if [ -z "${input}" ]; then # input のグリフが全て重複していた場合、設定を追加せず ruturn
-        echo "Removed all settings, skip ${caltList} index ${substIndex}: Lookup = ${lookupIndex}"
+        if [ -z "${lookupIndex}" ]; then
+          lookupIndex="none"
+        fi
+        skip=$((${skip} + 1))
+        echo "Removed all settings, skip ${caltList} index ${substIndex}: Lookup = ${lookupIndex} : ${skip}"
         eval "${2}=\${substIndex}" # 戻り値を入れる変数名を1番目の引数に指定する
         return
       fi
@@ -373,7 +440,11 @@ chain_context() {
           optimCheck=$((optimCheck + 1)) # 最適化が有効なので + 1
         fi
         if [ "${bt}" != "|" ] && [ -z "${backtrack}" ]; then # backtrack のグリフが全て重複していた場合、設定を追加せず ruturn
-          echo "Removed all settings, skip ${caltList} index ${substIndex}: Lookup = ${lookupIndex}"
+          if [ -z "${lookupIndex}" ]; then
+            lookupIndex="none"
+          fi
+          skip=$((${skip} + 1))
+          echo "Removed all settings, skip ${caltList} index ${substIndex}: Lookup = ${lookupIndex} : ${skip}"
           eval "${2}=\${substIndex}" # 戻り値を入れる変数名を1番目の引数に指定する
           return
         fi
@@ -444,7 +515,11 @@ chain_context() {
           optimCheck=$((optimCheck + 1)) # 最適化が有効なので + 1
         fi
         if [ "${la}" != "|" ] && [ -z "${lookAhead}" ]; then # lookAhead のグリフが全て重複していた場合、設定を追加せず ruturn
-          echo "Removed all settings, skip ${caltList} index ${substIndex}: Lookup = ${lookupIndex}"
+          if [ -z "${lookupIndex}" ]; then
+            lookupIndex="none"
+          fi
+          skip=$((${skip} + 1))
+          echo "Removed all settings, skip ${caltList} index ${substIndex}: Lookup = ${lookupIndex} : ${skip}"
           eval "${2}=\${substIndex}" # 戻り値を入れる変数名を1番目の引数に指定する
           return
         fi
@@ -453,7 +528,7 @@ chain_context() {
 # ---
 
       if [ ${optim} -ge 1 ] && [ ${optimCheck} -ge 1 ]; then # input、backtrack、lookAhead のいずれかで最適化が有効な条件なのに
-          echo "Attention: Optimization flag is set to false" # スキップするように設定してある場合、注意を表示
+        echo "Attention: Optimization flag is set to false" # スキップするように設定してある場合、注意を表示
       elif [ ${optim} -eq 0 ] && [ ${optimCheck} -eq 0 ]; then # input、backtrack、lookAhead の全てで最適化が有効ではない条件なのに
         echo "Attention: Optimization flag is set to true" # スキップしないように設定してある場合、注意を表示
       fi
@@ -462,6 +537,16 @@ chain_context() {
   fi # ${listNo} -le ${optimizeListNo}
 
 # 設定追加 ====================
+
+  letter_members input "${input[*]}" # input が無ければ設定しない (_M_ _W_ __m __w に値が無いため)
+  if [ -z "${input}" ]; then
+    if [ -z "${lookupIndex}" ]; then
+      lookupIndex="none"
+    fi
+    skip=$((${skip} + 1))
+    echo "No input, skip ${caltList} index ${substIndex}: Lookup = ${lookupIndex} : ${skip}"
+    return
+  fi
 
   if [ -n "${lookupIndex}" ]; then
     echo "Make ${caltList} index ${substIndex}: Lookup = ${lookupIndex}"
@@ -473,8 +558,8 @@ chain_context() {
 
 # backtrack --------------------
 
+  letter_members backtrack "${backtrack[*]}"
   if [ -n "${backtrack}" ]; then # 入力した文字の左側
-    letter_members backtrack "${backtrack[*]}"
     rm -f ${tmpdir}/${caltListName}.tmp.txt
     for S in ${backtrack[@]}; do
       glyph_name "${S}" >> "${tmpdir}/${caltListName}.tmp.txt" # 略号から通し番号とグリフ名を取得
@@ -486,8 +571,8 @@ chain_context() {
     } >> "${caltList}.txt"
   fi
 
+  letter_members backtrack1 "${backtrack1[*]}"
   if [ -n "${backtrack1}" ]; then # 入力した文字の左側2つ目
-    letter_members backtrack1 "${backtrack1[*]}"
     rm -f ${tmpdir}/${caltListName}.tmp.txt
     for S in ${backtrack1[@]}; do
       glyph_name "${S}" >> "${tmpdir}/${caltListName}.tmp.txt"
@@ -501,7 +586,7 @@ chain_context() {
 
 # input --------------------
 
-  letter_members input "${input[*]}"
+ #  letter_members input "${input[*]}" # 有無判別の際にすでに実行しているため
   rm -f ${tmpdir}/${caltListName}.tmp.txt
   for S in ${input[@]}; do
     glyph_name "${S}" >> "${tmpdir}/${caltListName}.tmp.txt"
@@ -514,8 +599,8 @@ chain_context() {
 
 # lookAhead --------------------
 
+  letter_members lookAhead "${lookAhead[*]}"
   if [ -n "${lookAhead}" ]; then # 入力した文字の右側
-    letter_members lookAhead "${lookAhead[*]}"
     rm -f ${tmpdir}/${caltListName}.tmp.txt
     for S in ${lookAhead[@]}; do
       glyph_name "${S}" >> "${tmpdir}/${caltListName}.tmp.txt"
@@ -527,8 +612,8 @@ chain_context() {
     } >> "${caltList}.txt"
   fi
 
+  letter_members lookAhead1 "${lookAhead1[*]}"
   if [ -n "${lookAhead1}" ]; then # 入力した文字の右側2つ目
-    letter_members lookAhead1 "${lookAhead1[*]}"
     rm -f ${tmpdir}/${caltListName}.tmp.txt
     for S in ${lookAhead1[@]}; do
       glyph_name "${S}" >> "${tmpdir}/${caltListName}.tmp.txt"
@@ -540,8 +625,8 @@ chain_context() {
     } >> "${caltList}.txt"
   fi
 
+  letter_members lookAheadX "${lookAheadX[*]}"
   if [ -n "${lookAheadX}" ]; then # 入力した文字の右側3つ目以降
-    letter_members lookAheadX "${lookAheadX[*]}"
     for i in $(seq 2 "${aheadMax}"); do
       rm -f ${tmpdir}/${caltListName}.tmp.txt
       for S in ${lookAheadX[@]}; do
@@ -1081,8 +1166,8 @@ if [ "${basic_only_flag}" = "true" ]; then
   S="_J_"; class+=("${S}"); eval ${S}=\(J\) # J
   S="_K_"; class+=("${S}"); eval ${S}=\(K\) # K
   S="_L_"; class+=("${S}"); eval ${S}=\(L\) # L
-  S="_M_"; class+=("${S}"); eval ${S}=\(M\) # M
-  S="_N_"; class+=("${S}"); eval ${S}=\(N\) # N
+  S="_M_"; class+=("${S}"); eval ${S}=\(\) # M
+  S="_N_"; class+=("${S}"); eval ${S}=\(N M\) # MN  Mの左右の空きが広いため
   S="_O_"; class+=("${S}"); eval ${S}=\(O\) # O
   S="_P_"; class+=("${S}"); eval ${S}=\(P\) # P
   S="_Q_"; class+=("${S}"); eval ${S}=\(Q\) # Q
@@ -1090,8 +1175,8 @@ if [ "${basic_only_flag}" = "true" ]; then
   S="_S_"; class+=("${S}"); eval ${S}=\(S\) # S
   S="_T_"; class+=("${S}"); eval ${S}=\(T\) # T
   S="_U_"; class+=("${S}"); eval ${S}=\(U\) # U
-  S="_V_"; class+=("${S}"); eval ${S}=\(V\) # V
-  S="_W_"; class+=("${S}"); eval ${S}=\(W\) # W
+  S="_V_"; class+=("${S}"); eval ${S}=\(V W\) # VW Wの左右の空きが広いため
+  S="_W_"; class+=("${S}"); eval ${S}=\(\) # W
   S="_X_"; class+=("${S}"); eval ${S}=\(X\) # X
   S="_Y_"; class+=("${S}"); eval ${S}=\(Y\) # Y
   S="_Z_"; class+=("${S}"); eval ${S}=\(Z\) # Z
@@ -1110,8 +1195,8 @@ if [ "${basic_only_flag}" = "true" ]; then
   S="__j"; class+=("${S}"); eval ${S}=\(j\) # j
   S="__k"; class+=("${S}"); eval ${S}=\(k\) # k
   S="__l"; class+=("${S}"); eval ${S}=\(l\) # l
-  S="__m"; class+=("${S}"); eval ${S}=\(m\) # m
-  S="__n"; class+=("${S}"); eval ${S}=\(n\) # n
+  S="__m"; class+=("${S}"); eval ${S}=\(\) # m
+  S="__n"; class+=("${S}"); eval ${S}=\(n m\) # mn mの左右の空きが広いため
   S="__o"; class+=("${S}"); eval ${S}=\(o\) # o
   S="__p"; class+=("${S}"); eval ${S}=\(p\) # p
   S="__q"; class+=("${S}"); eval ${S}=\(q\) # q
@@ -1119,8 +1204,8 @@ if [ "${basic_only_flag}" = "true" ]; then
   S="__s"; class+=("${S}"); eval ${S}=\(s\) # s
   S="__t"; class+=("${S}"); eval ${S}=\(t\) # t
   S="__u"; class+=("${S}"); eval ${S}=\(u\) # u
-  S="__v"; class+=("${S}"); eval ${S}=\(v\) # v
-  S="__w"; class+=("${S}"); eval ${S}=\(w\) # w
+  S="__v"; class+=("${S}"); eval ${S}=\(v w\) # vw wの左右の空きが広いため
+  S="__w"; class+=("${S}"); eval ${S}=\(\) # w
   S="__x"; class+=("${S}"); eval ${S}=\(x\) # x
   S="__y"; class+=("${S}"); eval ${S}=\(y\) # y
   S="__z"; class+=("${S}"); eval ${S}=\(z\) # z
@@ -1142,8 +1227,8 @@ else
   S="_J_"; class+=("${S}"); eval ${S}=\(J Ĵ\) # J
   S="_K_"; class+=("${S}"); eval ${S}=\(K Ķ\) # K
   S="_L_"; class+=("${S}"); eval ${S}=\(L Ĺ Ļ Ľ Ŀ Ł\) # L
-  S="_M_"; class+=("${S}"); eval ${S}=\(M\) # M
-  S="_N_"; class+=("${S}"); eval ${S}=\(N Ñ Ń Ņ Ň Ŋ\) # N
+  S="_M_"; class+=("${S}"); eval ${S}=\(\) # M
+  S="_N_"; class+=("${S}"); eval ${S}=\(N Ñ Ń Ņ Ň Ŋ M\) # MN Mの左右の空きが広いため
   S="_O_"; class+=("${S}"); eval ${S}=\(O Ò Ó Ô Õ Ö Ø Ō Ŏ Ő\) # O
   S="_P_"; class+=("${S}"); eval ${S}=\(P\) # P
   S="_Q_"; class+=("${S}"); eval ${S}=\(Q\) # Q
@@ -1151,8 +1236,8 @@ else
   S="_S_"; class+=("${S}"); eval ${S}=\(S Ś Ŝ Ş Š Ș\) # S
   S="_T_"; class+=("${S}"); eval ${S}=\(T Ţ Ť Ŧ Ț\) # T
   S="_U_"; class+=("${S}"); eval ${S}=\(U Ù Ú Û Ü Ũ Ū Ŭ Ů Ű Ų\) # U
-  S="_V_"; class+=("${S}"); eval ${S}=\(V\) # V
-  S="_W_"; class+=("${S}"); eval ${S}=\(W Ŵ\) # W
+  S="_V_"; class+=("${S}"); eval ${S}=\(V W Ŵ\) # VW Wの左右の空きが広いため
+  S="_W_"; class+=("${S}"); eval ${S}=\(\) # W
   S="_X_"; class+=("${S}"); eval ${S}=\(X\) # X
   S="_Y_"; class+=("${S}"); eval ${S}=\(Y Ý Ÿ Ŷ\) # Y
   S="_Z_"; class+=("${S}"); eval ${S}=\(Z Ź Ż Ž\) # Z
@@ -1171,8 +1256,8 @@ else
   S="__j"; class+=("${S}"); eval ${S}=\(j ĵ\) # j
   S="__k"; class+=("${S}"); eval ${S}=\(k ķ\) # k
   S="__l"; class+=("${S}"); eval ${S}=\(l ĺ ļ ľ ŀ ł\) # l
-  S="__m"; class+=("${S}"); eval ${S}=\(m\) # m
-  S="__n"; class+=("${S}"); eval ${S}=\(n ñ ń ņ ň ŋ\) # n
+  S="__m"; class+=("${S}"); eval ${S}=\(\) # m
+  S="__n"; class+=("${S}"); eval ${S}=\(n ñ ń ņ ň ŋ m\) # mn mの左右の空きが広いため
   S="__o"; class+=("${S}"); eval ${S}=\(o ò ó ô õ ö ø ō ŏ ő ð\) # o ð
   S="__p"; class+=("${S}"); eval ${S}=\(p\) # p
   S="__q"; class+=("${S}"); eval ${S}=\(q\) # q
@@ -1180,8 +1265,8 @@ else
   S="__s"; class+=("${S}"); eval ${S}=\(s ś ŝ ş š ș\) # s
   S="__t"; class+=("${S}"); eval ${S}=\(t ţ ť ŧ ț\) # t
   S="__u"; class+=("${S}"); eval ${S}=\(u ù ú û ü ũ ū ŭ ů ű ų\) # u
-  S="__v"; class+=("${S}"); eval ${S}=\(v\) # v
-  S="__w"; class+=("${S}"); eval ${S}=\(w ŵ\) # w
+  S="__v"; class+=("${S}"); eval ${S}=\(v w ŵ\) # vw wの左右の空きが広いため
+  S="__w"; class+=("${S}"); eval ${S}=\(\) # w
   S="__x"; class+=("${S}"); eval ${S}=\(x\) # x
   S="__y"; class+=("${S}"); eval ${S}=\(y ý ÿ ŷ\) # y
   S="__z"; class+=("${S}"); eval ${S}=\(z ź ż ž\) # z

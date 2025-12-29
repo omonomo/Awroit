@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# FontForge and TTX runner
+# FontForge and TTX runner for fixed gap
 #
 # Copyright (c) 2023 omonomo
 #
@@ -114,7 +114,7 @@ forge_ttx_help()
     echo "  -n string  Set fontfamily suffix (\"string\")"
     echo "  -w         Set the ratio of hankaku to zenkaku characters to 9:16"
  #    echo "  -L         Enable ligatures"
-    echo "  -k         Don't make calt settings for latin characters"
+ #    echo "  -k         Don't make calt settings for latin characters"
     echo "  -r         Reuse an existing list"
     echo "  -d         Draft mode (skip time-consuming processes)" # グリフ変更の確認用 (最後は通常モードで確認すること)
     echo "  -C         End just before editing calt feature" # caltの編集・確認を繰り返す時用にcalt適用前のフォントを作成する
@@ -140,7 +140,7 @@ echo
 
 # オプションを取得
  #while getopts hxXlN:n:wLkrdCpF OPT
-while getopts hxXlN:n:wkrdCpF OPT
+while getopts hxXlN:n:wrdCpF OPT
 do
     case "${OPT}" in
         "h" )
@@ -181,10 +181,10 @@ do
  #            echo "Option: Enable ligatures"
  #            liga_flag="true"
  #            ;;
-        "k" )
-            echo "Option: Don't make calt settings for latin characters"
-            symbol_only_flag="true"
-            ;;
+ #        "k" )
+ #            echo "Option: Don't make calt settings for latin characters"
+ #            symbol_only_flag="true"
+ #            ;;
         "r" )
             echo "Option: Reuse an existing list"
             reuse_list_flag="true"
@@ -326,9 +326,9 @@ fi
 # テーブル加工 (-F オプション以外はカーニング設定を基本ラテン文字に限定、最適化処理をしない)
 case ${mode} in
   "-C" ) opt_tm="C" ;;
-  "-p" ) opt_tm="pb" ;;
-  "-F" ) opt_tm="o" ;;
-     * ) opt_tm="b" ;;
+  "-p" ) opt_tm="pbk" ;;
+  "-F" ) opt_tm="ok" ;;
+     * ) opt_tm="bk" ;;
 esac
 option_format_tm opt_tm "${opt_tm}" "${leaving_tmp_flag}" "${symbol_only_flag}" "${reuse_list_flag}"
 if [ -n "${opt_tm}" ]; then
