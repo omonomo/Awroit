@@ -1102,6 +1102,61 @@ while (i < SizeOf(input_list))
     Scale(104, 100)
     SetWidth(${width_latin_wide})
 
+# N (縦棒をほんの少し太く)
+    # 左縦棒
+    Select(0u2588); Copy() # Full block
+    Select(65552);  Paste() # Temporary glyph
+    if (input_list[i] == "${input_latin_regular}")
+        Move(-454, 0)
+    else
+        Move(-420, 0)
+    endif
+    Select(0u004e); Copy() # N
+    Select(65552);  PasteInto() # Temporary glyph
+    OverlapIntersect()
+    Copy()
+    Select(0u004e); PasteWithOffset(8, 0) # N
+    # 右縦棒
+    Select(0u2588); Copy() # Full block
+    Select(65553);  Paste() # Temporary glyph
+    if (input_list[i] == "${input_latin_regular}")
+        Move(455, 0)
+    else
+        Move(421, 0)
+    endif
+    Select(0u004e); Copy() # N
+    Select(65553);  PasteInto() # Temporary glyph
+    OverlapIntersect()
+    Copy()
+    Select(0u004e); PasteWithOffset(-8, 0) # N
+    RemoveOverlap()
+    SetWidth(${width_latin})
+
+    Select(65552); Clear() # Temporary glyph
+    Select(65553); Clear() # Temporary glyph
+
+    Select(0u2588); Copy() # Full block
+    Select(0u00d1); PasteWithOffset(0,  1150); OverlapIntersect() # Ñ
+    Select(0u0143); PasteWithOffset(0,  1150); OverlapIntersect() # Ń
+    Select(0u0145); PasteWithOffset(0, -1020); OverlapIntersect() # Ņ
+    Select(0u0147); PasteWithOffset(0,  1150); OverlapIntersect() # Ň
+    Select(0u004e); Copy() # N
+    Select(0u00d1); PasteInto(); SetWidth(${width_latin}) # Ñ
+    Select(0u0143); PasteInto(); SetWidth(${width_latin}) # Ń
+    Select(0u0145); PasteInto(); SetWidth(${width_latin}) # Ņ
+    Select(0u0147); PasteInto(); SetWidth(${width_latin}) # Ň
+
+ #    Select(0u019d) # Ɲ
+ #    Select(0u0220) # Ƞ
+ #    Select(0u01cb) # ǋ
+ #    Select(0u01f8) # Ǹ
+ #    Select(0u1e44) # Ṅ
+ #    Select(0u1e46) # Ṇ
+ #    Select(0u1e48) # Ṉ
+ #    Select(0u1e4a) # Ṋ
+ #    Select(0ua790) # Ꞑ
+ #    Select(0ua7a4) # Ꞥ
+
 # Q (ss用、突き抜けた尻尾でOと区別しやすくしない)
     Select(0u0051); Copy() # Q
     Select(${address_store_mod} + 1); Paste() # 保管所
@@ -4212,7 +4267,6 @@ while (i < \$argc)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
             SetWidth(${width_hankaku})
         elseif (GlyphInfo("Width") <= 900)
-            Move(${move_x_calt_latin}, 0)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
             SetWidth(${width_hankaku_wide})
         endif
@@ -4236,7 +4290,6 @@ while (i < \$argc)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
             SetWidth(${width_hankaku})
         elseif (GlyphInfo("Width") <= 900)
-            Move(${move_x_calt_latin}, 0)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
             SetWidth(${width_hankaku_wide})
         endif
@@ -4266,7 +4319,6 @@ while (i < \$argc)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
                 SetWidth(${width_hankaku})
             elseif (GlyphInfo("Width") <= 900)
-                Move(${move_x_calt_latin}, 0)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
                 SetWidth(${width_hankaku_wide})
             endif
@@ -4299,7 +4351,6 @@ while (i < \$argc)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
                 SetWidth(${width_hankaku})
             elseif (GlyphInfo("Width") <= 900)
-                Move(${move_x_calt_latin}, 0)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
                 SetWidth(${width_hankaku_wide})
             endif
@@ -4326,7 +4377,6 @@ while (i < \$argc)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
             SetWidth(${width_hankaku})
         elseif (GlyphInfo("Width") <= 900)
-            Move(${move_x_calt_latin}, 0)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
             SetWidth(${width_hankaku_wide})
         endif
@@ -4349,7 +4399,6 @@ while (i < \$argc)
         Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
         SetWidth(${width_hankaku})
     elseif (GlyphInfo("Width") <= 900)
-        Move(${move_x_calt_latin}, 0)
         Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
         SetWidth(${width_hankaku_wide})
     endif
@@ -4376,7 +4425,6 @@ while (i < \$argc)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
             SetWidth(${width_hankaku})
         elseif (GlyphInfo("Width") <= 900)
-            Move(-${move_x_calt_latin}, 0)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
             SetWidth(${width_hankaku_wide})
         endif
@@ -4400,7 +4448,6 @@ while (i < \$argc)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
             SetWidth(${width_hankaku})
         elseif (GlyphInfo("Width") <= 900)
-            Move(-${move_x_calt_latin}, 0)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
             SetWidth(${width_hankaku_wide})
         endif
@@ -4430,7 +4477,6 @@ while (i < \$argc)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
                 SetWidth(${width_hankaku})
             elseif (GlyphInfo("Width") <= 900)
-                Move(-${move_x_calt_latin}, 0)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
                 SetWidth(${width_hankaku_wide})
             endif
@@ -4463,7 +4509,6 @@ while (i < \$argc)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
                 SetWidth(${width_hankaku})
             elseif (GlyphInfo("Width") <= 900)
-                Move(-${move_x_calt_latin}, 0)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
                 SetWidth(${width_hankaku_wide})
             endif
@@ -4490,7 +4535,6 @@ while (i < \$argc)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
             SetWidth(${width_hankaku})
         elseif (GlyphInfo("Width") <= 900)
-            Move(-${move_x_calt_latin}, 0)
             Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
             SetWidth(${width_hankaku_wide})
         endif
@@ -4513,7 +4557,6 @@ while (i < \$argc)
         Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
         SetWidth(${width_hankaku})
     elseif (GlyphInfo("Width") <= 900)
-        Move(-${move_x_calt_latin}, 0)
         Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
         SetWidth(${width_hankaku_wide})
     endif
@@ -7107,7 +7150,6 @@ while (i < \$argc)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
                 SetWidth(${width_hankaku})
             elseif (GlyphInfo("Width") <= 900)
-                Move(${move_x_calt_latin}, 0)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
                 SetWidth(${width_hankaku_wide})
             endif
@@ -7126,7 +7168,6 @@ while (i < \$argc)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
                 SetWidth(${width_hankaku})
             elseif (GlyphInfo("Width") <= 900)
-                Move(${move_x_calt_latin}, 0)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
                 SetWidth(${width_hankaku_wide})
             endif
@@ -7147,7 +7188,6 @@ while (i < \$argc)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
                 SetWidth(${width_hankaku})
             elseif (GlyphInfo("Width") <= 900)
-                Move(-${move_x_calt_latin}, 0)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
                 SetWidth(${width_hankaku_wide})
             endif
@@ -7166,7 +7206,6 @@ while (i < \$argc)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku} / 2, 0)
                 SetWidth(${width_hankaku})
             elseif (GlyphInfo("Width") <= 900)
-                Move(-${move_x_calt_latin}, 0)
                 Scale(${scale_width_hankaku}, ${scale_height_hankaku}, ${width_hankaku_wide} / 2, 0)
                 SetWidth(${width_hankaku_wide})
             endif
