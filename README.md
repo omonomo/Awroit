@@ -23,6 +23,9 @@ Awroit (あろいと) はコーディングにもお使いいただける日本�
 [egword Universal2](https://www.monokakido.jp/ja/mac/egworduniversal2/) にて  
 <img alt="ScreenShot" src="./images/SS_2.png" width="420">
 
+英文サンプル  
+<img alt="ScreenShot" src="./images/SS_3.png" width="670">
+
 桁区切り表示サンプル  
 <img alt="ScreenShot" src="./images/SS_4.gif" width="165">
 
