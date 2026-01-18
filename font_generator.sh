@@ -1314,9 +1314,44 @@ while (i < SizeOf(input_list))
     Simplify()
     RoundToInt()
     Move(10, 0)
-    Move(${width_latin_thin} / 4, 0)
-    SetWidth(${width_latin_narrow})
-    Select(65552);  Clear() # Temporary glyph
+
+    orig = [0u0069, 0u00ec, 0u00ed, 0u00ee, \
+            0u00ef, 0u0129, 0u012b, 0u012d, \
+            0u012f, 0u0131, 0u1ec9, 0u1ecb, \
+            0u0456, 0u0457]  # iìíî ïĩīĭ įıỉị ії
+    j = 0
+    while (j < SizeOf(orig))
+        Select(0u2588); Copy() # Full block
+        Select(65552); Paste() # Temporary glyph
+        Move(-150, 950)
+        Select(65553); Paste() # Temporary glyph
+        Move(-150, -460)
+
+        Select(orig[j]); Copy()
+        Select(65552); PasteInto() # Temporary glyph
+        OverlapIntersect()
+
+        Select(orig[j]); Copy()
+        Select(65553); PasteInto() # Temporary glyph
+        OverlapIntersect()
+
+        Select(65552); Copy() # Temporary glyph
+        Select(orig[j]); Paste()
+        if (input_list[i] == "${input_latin_regular}")
+            Move(-13, 0)
+        else
+            Move(-7, 0)
+        endif
+        Select(65553); Copy() # Temporary glyph
+        Select(orig[j]); PasteInto()
+
+        Move(${width_latin_thin} / 4, 0)
+        SetWidth(${width_latin_narrow})
+        j += 1
+    endloop
+
+    Select(65552); Clear() # Temporary glyph
+    Select(65553); Clear() # Temporary glyph
 
 # j (セリフを付けて右に移動、narrow にする)
     Select(0u00af); Copy() # macron
@@ -1347,9 +1382,42 @@ while (i < SizeOf(input_list))
     RemoveOverlap()
     Simplify()
     RoundToInt()
-    Move(30, 0)
-    Move(${width_latin_thin} / 4, 0)
-    SetWidth(${width_latin_narrow})
+    Move(25, 0)
+
+    orig = [0u006a, 0u0135, 0u0237, 0u0458] # jĵȷј
+    j = 0
+    while (j < SizeOf(orig))
+        Select(0u2588); Copy() # Full block
+        Select(65552); Paste() # Temporary glyph
+        Move(-150, 950)
+        Select(65553); Paste() # Temporary glyph
+        Move(-150, -460)
+
+        Select(orig[j]); Copy()
+        Select(65552); PasteInto() # Temporary glyph
+        OverlapIntersect()
+
+        Select(orig[j]); Copy()
+        Select(65553); PasteInto() # Temporary glyph
+        OverlapIntersect()
+
+        Select(65552); Copy() # Temporary glyph
+        Select(orig[j]); Paste()
+        if (input_list[i] == "${input_latin_regular}")
+            Move(-16, 0)
+        else
+            Move(-8, 0)
+        endif
+        Select(65553); Copy() # Temporary glyph
+        Select(orig[j]); PasteInto()
+
+        Move(${width_latin_thin} / 4, 0)
+        SetWidth(${width_latin_narrow})
+        j += 1
+    endloop
+
+    Select(65552); Clear() # Temporary glyph
+    Select(65553); Clear() # Temporary glyph
 
 # l (つま先を延ばして narrow にする)
     if (input_list[i] == "${input_latin_bold}")
