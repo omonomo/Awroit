@@ -54,7 +54,7 @@ lookupIndex_init() {
 }
 leaving_tmp_flag="false" # 一時ファイル残す
 basic_only_flag="false" # 基本ラテン文字のみ
-symbol_only_flag="false" # 記号、桁区切りのみ
+symbol_only_flag="true" # 記号、桁区切りのみ
 optimize_mode="void" # なんちゃって最適化ルーチンのモード (void: 実行しない、optional: 任意のみ、force: 強制)
 glyphNo_flag="false" # glyphナンバーの指定があるか
 liga_flag="false" # リガチャフラグ
