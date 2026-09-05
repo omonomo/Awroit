@@ -12,5 +12,4 @@ defaults:
   - scope:
       path: ""
     values:
-      layout: default
       image: "/images/social-preview.png"
