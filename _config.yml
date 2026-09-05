@@ -1,13 +1,3 @@
-title: "Awroit"
-description: "全角英数や半角カナが判別しやすいプロポーショナルフォント"
-
-url: "https://omonomo.github.io"
-baseurl: "/Awroit"
-
-plugins:
-  - jekyll-readme-index
-  - jekyll-seo-tag
-
 defaults:
   - scope:
       path: ""
